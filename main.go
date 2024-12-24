@@ -12,16 +12,29 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
-var docStyle = lipgloss.NewStyle().Margin(1, 0)
+var docStyle = lipgloss.NewStyle().Margin(0, 0).MaxHeight(50)
 
 type tickMsg time.Time
 
 var defaultStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("63")) // purple
+	BorderForeground(lipgloss.Color("63")). // purple
+	Margin(1)
+
+var utilHeaderStyle = lipgloss.NewStyle().
+	MarginTop(1).MarginLeft(13).
+	Background(lipgloss.Color("63"))
+
+var memoryStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("1")).
+	PaddingTop(2).
+	MarginTop(2).
+	PaddingBottom(2).
+	BorderStyle(lipgloss.NormalBorder())
 
 var graphLineStyle1 = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("4")) // blue
@@ -43,8 +56,7 @@ func (i item) FilterValue() string { return i.title }
 type model struct {
 	list      list.Model
 	utilChart streamlinechart.Model
-	width     int
-	height    int
+	memory    int
 }
 
 func (m model) Init() tea.Cmd {
@@ -69,13 +81,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return tickMsg(t)
 		})
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		listWidth := int(0.4 * float64(m.width))
-		// Subtract an extra 2 rows for the list’s title and borders.
-		listHeight := m.height - 2
-
-		m.list.SetSize(listWidth, listHeight)
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize((msg.Width-h)/2, (msg.Height-v)/2)
 	}
 
 	m.utilChart, _ = m.utilChart.Update(msg)
@@ -86,36 +93,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	listWidth := int(0.4 * float64(m.width))
-	chartWidth := m.width - listWidth
-
-	// It’s good practice to account for any border or margin:
-	// E.g., docStyle might reduce the actual available width/height.
-	// You can get margin/padding with docStyle.GetFrameSize() if needed.
-
-	// Render list and chart with explicit widths.
-	// For the chart’s height, let’s just reuse our total terminal height
-	// minus any vertical margin from docStyle.
-	leftView := lipgloss.NewStyle().
-		Width(listWidth).
-		Render(m.list.View())
-	rightView := lipgloss.NewStyle().
-		Width(chartWidth).
-		Render(m.utilChart.View())
-
-	// Join horizontally
-	content := lipgloss.JoinHorizontal(lipgloss.Top, leftView, rightView)
-
-	// Finally, wrap in docStyle if desired
-	return docStyle.Render(content)
+	s := docStyle.Render(m.list.View())
+	w := utilHeaderStyle.Render("Utilization")
+	// w += defaultStyle.Render(m.utilChart.View())
+	w += lipgloss.JoinVertical(lipgloss.Right, defaultStyle.Render(m.utilChart.View()))
+	total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(m.memory))
+	new_view := lipgloss.JoinHorizontal(lipgloss.Center, s, w)
+	new_view += lipgloss.JoinVertical(lipgloss.Center, total_mem)
+	return new_view
 }
 
 func main() {
 	width := 36
-	height := 14
+	height := 18
 	minYValue := 0.0
-	maxYValue := 100.0
-	process, err := process.Processes()
+	maxYValue := 112.0
+	process, _ := process.Processes()
+	mem, err := mem.VirtualMemory()
+
 	if err != nil {
 		fmt.Printf("error")
 	}
@@ -135,8 +130,8 @@ func main() {
 	slc1.SetStyles(runes.ThinLineStyle, graphLineStyle1) // graphLineStyle1 replaces linechart rune style
 	slc1.Focus()
 
-	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0), utilChart: slc1}
-	m.list.Title = "My Fave Things"
+	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0), utilChart: slc1, memory: int(mem.Total)}
+	m.list.Title = "Active Processes"
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
