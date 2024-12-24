@@ -25,7 +25,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.org/x/sync v0.9.0 // indirect
 	golang.org/x/sys v0.27.0 // indirect
-	golang.org/x/text v0.3.8 // indirect
+	golang.org/x/text v0.20.0 // indirect
 )
 
 require (
@@ -45,7 +45,12 @@ require (
 )
 
 require (
+	github.com/NimbleMarkets/ntcharts v0.3.1
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
+	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 )
+
+require github.com/lrstanley/bubblezone v0.0.0-20240914071701-b48c55a5e78e // indirect
