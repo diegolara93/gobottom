@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 )
@@ -56,7 +58,7 @@ func (i item) FilterValue() string { return i.title }
 type model struct {
 	list      list.Model
 	utilChart streamlinechart.Model
-	memory    int
+	memory    *mem.VirtualMemoryStat
 }
 
 func (m model) Init() tea.Cmd {
@@ -76,7 +78,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.utilChart.Push(rand.Float64() * 100.0)
 		m.utilChart.Draw()
 
-		// Schedule the next tick
+		// send next tick
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
 			return tickMsg(t)
 		})
@@ -84,6 +86,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		h, v := docStyle.GetFrameSize()
 		m.list.SetSize((msg.Width-h)/2, (msg.Height-v)/2)
 	}
+
+	//retrieveCurrentCPUUtilization()
 
 	m.utilChart, _ = m.utilChart.Update(msg)
 	m.utilChart.DrawAll()
@@ -97,17 +101,32 @@ func (m model) View() string {
 	w := utilHeaderStyle.Render("Utilization")
 	// w += defaultStyle.Render(m.utilChart.View())
 	w += lipgloss.JoinVertical(lipgloss.Right, defaultStyle.Render(m.utilChart.View()))
-	total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(m.memory))
+	total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
+		"Used Memory:  " + strconv.Itoa(int(m.memory.Available)/int(math.Pow(1024, 3))) + " GB")
+
 	new_view := lipgloss.JoinHorizontal(lipgloss.Center, s, w)
 	new_view += lipgloss.JoinVertical(lipgloss.Center, total_mem)
 	return new_view
 }
 
+func retrieveCurrentCPUUtilization() []float64 { // TODO:  change this function to push into a slice and display rather than print
+	cpu, err := cpu.Percent(time.Second, true)
+	if err != nil {
+		fmt.Println("Error retrieving CPU utilization", err)
+	}
+	for i, percents := range cpu {
+		fmt.Printf("CPU %v has usage: %f\n", i, percents)
+	}
+
+	return cpu
+}
+
 func main() {
-	width := 36
+	width := 40
 	height := 18
 	minYValue := 0.0
 	maxYValue := 112.0
+
 	process, _ := process.Processes()
 	mem, err := mem.VirtualMemory()
 
@@ -130,7 +149,7 @@ func main() {
 	slc1.SetStyles(runes.ThinLineStyle, graphLineStyle1) // graphLineStyle1 replaces linechart rune style
 	slc1.Focus()
 
-	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0), utilChart: slc1, memory: int(mem.Total)}
+	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0), utilChart: slc1, memory: mem}
 	m.list.Title = "Active Processes"
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
