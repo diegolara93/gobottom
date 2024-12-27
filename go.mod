@@ -53,4 +53,9 @@ require (
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 )
 
-require github.com/lrstanley/bubblezone v0.0.0-20240914071701-b48c55a5e78e // indirect
+require (
+	github.com/lrstanley/bubblezone v0.0.0-20240914071701-b48c55a5e78e // indirect
+	github.com/shirou/gopsutil/v4 v4.24.11
+)
+
+require github.com/ebitengine/purego v0.8.1 // indirect
