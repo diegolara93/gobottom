@@ -1,4 +1,4 @@
-module go_bubbletea
+module bottomgo
 
 go 1.23.2
 

@@ -18,7 +18,7 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 )
 
-var docStyle = lipgloss.NewStyle().Margin(0, 0).MaxHeight(35)
+var docStyle = lipgloss.NewStyle().Margin(0, 0)
 
 type tickMsg time.Time
 
@@ -92,12 +92,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.utilChart2.Push(m.cpuUtilzations)
 		m.utilChart2.Draw()
 		// send next tick
-		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return m, tea.Tick(time.Second/2, func(t time.Time) tea.Msg {
 			return tickMsg(t)
 		})
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
-		m.list.SetSize((msg.Width - h), (msg.Height-v)/2)
+		m.list.SetSize((msg.Width-h)/2, (msg.Height-v)/3)
+		m.utilChart.Resize((msg.Width-h)/2, (msg.Height-v)/3)
+		m.utilChart2.Resize((msg.Width-h)/2, (msg.Height-v)/3)
+		m.list_cpus.SetSize((msg.Width-h)/2, (msg.Height-v)/3)
+		//	h2, v2 := memoryStyle.GetFrameSize()
+		memoryStyle = memoryStyle.
+			Height((msg.Height - v) / 3).
+			Width((msg.Width - h) / 4)
 	}
 
 	m.utilChart, _ = m.utilChart.Update(msg)
