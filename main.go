@@ -145,6 +145,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.utilChart2.Resize((msg.Width-h)/3, (msg.Height-v)/3+v/2)
 		m.list_cpus.SetSize((msg.Width-h)/3, (msg.Height-v)/3+v)
 		m.disks.Height = (msg.Height-v)/3 + v
+		m.disks.Width = (msg.Width - h) / 7
 		m.hostInfo.Height = (msg.Height-v)/3 + v
 		m.hostInfo.Width = (msg.Width - h) / 4
 		h3, _ := list_item_style.GetFrameSize()
@@ -183,7 +184,7 @@ func (m model) View() string {
 	//	"Used Memory:  " + strconv.Itoa(int(m.memory.Available)/int(math.Pow(1024, 3))) + " GB")
 
 	colors := func() string {
-		colors := colorGrid(m.list.Width()/4, m.list.Height())
+		colors := colorGrid((m.disks.Width/2)+7, m.list.Height())
 
 		b := strings.Builder{}
 		for _, x := range colors {
