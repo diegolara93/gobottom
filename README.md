@@ -14,6 +14,7 @@ A lot of refactoring needs to be done as I just threw stuff together as I went.
 ## Known Issues:
 Due to issues with GoPsutil, specifically https://github.com/giampaolo/psutil/issues/906 on FreeBSD based operating systems, such as MacOS darwin,
 disks will display all partitions of every disk rather than just the physical disks of your machine.
+System processes will be blank unless the terminal has administrator privileges.
 
 
 
