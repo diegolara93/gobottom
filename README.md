@@ -1,6 +1,6 @@
 # BottomGo
 A graphical terminal interface for system monitoring inspired by bottom(https://github.com/ClementTsang/bottom), which is written in Rust.
-
+![Alt text](/screenshots/Screenshot 2024-12-29 012210.png?raw=true)
 ## How It's Made:
 
 **Made with:** Go, BubbleTea, NtCharts, GoPsutil
