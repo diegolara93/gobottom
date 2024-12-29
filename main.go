@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NimbleMarkets/ntcharts/canvas/runes"
@@ -14,14 +14,18 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
 var docStyle = lipgloss.NewStyle().Margin(0, 0).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#98971a"))
 var docStyle2 = lipgloss.NewStyle().Margin(2, 0, 0, 0).Border(lipgloss.NormalBorder()).Width(20).BorderForeground(lipgloss.Color("#ebdbb2"))
+
+var colorMargin = lipgloss.NewStyle().Margin(1)
 
 var textStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7c6f64"))
 
@@ -77,6 +81,7 @@ type model struct {
 	selected_list  int32
 	selected_cpu   int32
 	disks          viewport.Model
+	hostInfo       viewport.Model
 }
 
 func (m model) Init() tea.Cmd {
@@ -110,7 +115,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		m.utilChart.Push(rand.Float64() * 100.0)
+		mem, err := mem.VirtualMemory()
+		if err != nil {
+			fmt.Println("error getting ram", err)
+		}
+		m.utilChart.Push(mem.UsedPercent)
 		m.utilChart.Draw()
 
 		if m.selected_cpu != int32(m.list_cpus.Index()) {
@@ -133,9 +142,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		//_, v2 := list_item_style.GetFrameSize()
 		m.list.SetSize((msg.Width-h)/2, (msg.Height-v)/3+v)
 		m.utilChart.Resize((msg.Width-h)/3, (msg.Height-v)/3+v/2)
-		m.utilChart2.Resize((msg.Width-h)/3, (msg.Height-v)/3+v)
+		m.utilChart2.Resize((msg.Width-h)/3, (msg.Height-v)/3+v/2)
 		m.list_cpus.SetSize((msg.Width-h)/3, (msg.Height-v)/3+v)
 		m.disks.Height = (msg.Height-v)/3 + v
+		m.hostInfo.Height = (msg.Height-v)/3 + v
+		m.hostInfo.Width = (msg.Width - h) / 4
 		h3, _ := list_item_style.GetFrameSize()
 
 		list_item_style = list_item_style.Width((msg.Width - h3) / 2)
@@ -165,13 +176,31 @@ func (m model) View() string {
 
 	ramChartHeader := utilHeaderStyle.Render("Ram Usage: ")
 
+	cpuUtilHeader := utilHeaderStyle.Render("Core Utilization: ")
+
 	w := defaultStyle.Render("  " + ramChartHeader + "\n" + m.utilChart.View())
 	//total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
 	//	"Used Memory:  " + strconv.Itoa(int(m.memory.Available)/int(math.Pow(1024, 3))) + " GB")
 
-	temp_view := lipgloss.JoinHorizontal(lipgloss.Bottom, defaultStyle.Render(m.utilChart2.View()), zone.Mark("CPU", t))
+	colors := func() string {
+		colors := colorGrid(m.list.Width()/4, m.list.Height())
+
+		b := strings.Builder{}
+		for _, x := range colors {
+			for _, y := range x {
+				s := lipgloss.NewStyle().SetString("  ").Background(lipgloss.Color(y))
+				b.WriteString(s.String())
+			}
+			b.WriteRune('\n')
+		}
+
+		return b.String()
+	}()
+
 	d := defaultStyle.Render(m.disks.View())
-	new_view := lipgloss.JoinHorizontal(lipgloss.Top, zone.Mark("Other List", s), w, d)
+	j := defaultStyle.Render(m.hostInfo.View())
+	temp_view := lipgloss.JoinHorizontal(lipgloss.Bottom, defaultStyle.Render("  "+cpuUtilHeader+"\n"+m.utilChart2.View()), zone.Mark("CPU", t), j)
+	new_view := lipgloss.JoinHorizontal(lipgloss.Top, w, zone.Mark("Other List", s), d, colorMargin.Render(colors))
 	final_view := lipgloss.JoinVertical(lipgloss.Left, new_view, temp_view)
 	return zone.Scan(final_view)
 }
@@ -195,13 +224,26 @@ func main() {
 
 	cpuUtilizations := retrieveCurrentCPUUtilization(0)
 
-	disks, _ := disk.Partitions(false)
+	disks, err := disk.Partitions(false)
+	if err != nil {
+		fmt.Println("error getting disks", err)
+	}
 
-	process, _ := process.Processes()
+	process, err := process.Processes()
+	if err != nil {
+		fmt.Println("error getting processes", err)
+	}
+
 	mem, err := mem.VirtualMemory()
 	if err != nil {
-		fmt.Printf("error")
+		fmt.Println("error getting ram", err)
 	}
+
+	host, err := host.Info()
+	if err != nil {
+		fmt.Println("error getting host info", err)
+	}
+
 	items := []list.Item{}
 
 	cpu_items := []list.Item{}
@@ -240,6 +282,8 @@ func main() {
 
 	vp := viewport.New(30, 30)
 
+	vp2 := viewport.New(30, 30)
+
 	m := model{
 		list: list.New(items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0), utilChart: slc1,
 		memory: mem, cpuUtilzations: cpuUtilizations, utilChart2: util_chart,
@@ -247,6 +291,7 @@ func main() {
 		selected_list: 0,
 		selected_cpu:  0,
 		disks:         vp,
+		hostInfo:      vp2,
 	}
 	m.list.Title = "Active Processes"
 	m.list.Styles.Title = utilHeaderStyle
@@ -264,12 +309,19 @@ func main() {
 		"\n" +
 		printDisks(disks))
 
+	m.hostInfo.SetContent(textStyle.Render(printHostInfo(host)))
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
+}
+
+func printHostInfo(host *host.InfoStat) string {
+	str := ""
+	str += "Operating System: " + host.Platform + "\nCPU Instruction Set: " + host.KernelArch + "\nUptime: " + strconv.FormatFloat(float64(host.Uptime)/3600.0, 'f', 2, 64) + " Hours"
+	return textStyle.Render(str)
 }
 
 func printDisks(disks []disk.PartitionStat) string {
@@ -281,7 +333,8 @@ func printDisks(disks []disk.PartitionStat) string {
 			fmt.Println("error retrieving storage", err)
 		}
 		freeStorage := BytesToTB(storage.Total)
-		str += "Drive " + currDisk + " " + strconv.FormatFloat(freeStorage, 'f', 2, 64) + "TB\n"
+		usedStorage := BytesToTB(storage.Free)
+		str += "Drive " + currDisk + " " + strconv.FormatFloat(usedStorage, 'f', 2, 64) + "/" + strconv.FormatFloat(freeStorage, 'f', 2, 64) + "TB\n"
 	}
 	return textStyle.Render(str)
 }
@@ -289,4 +342,32 @@ func printDisks(disks []disk.PartitionStat) string {
 func BytesToTB(bytes uint64) float64 {
 	const tb = 1024 * 1024 * 1024 * 1024 // 1 TB = 2^40 bytes
 	return float64(bytes) / float64(tb)
+}
+
+func colorGrid(xSteps, ySteps int) [][]string {
+	x0y0, _ := colorful.Hex("#d79921")
+	x1y0, _ := colorful.Hex("#cc241d")
+	x0y1, _ := colorful.Hex("#458588")
+	x1y1, _ := colorful.Hex("#b16286")
+
+	x0 := make([]colorful.Color, ySteps)
+	for i := range x0 {
+		x0[i] = x0y0.BlendLuv(x0y1, float64(i)/float64(ySteps))
+	}
+
+	x1 := make([]colorful.Color, ySteps)
+	for i := range x1 {
+		x1[i] = x1y0.BlendLuv(x1y1, float64(i)/float64(ySteps))
+	}
+
+	grid := make([][]string, ySteps)
+	for x := 0; x < ySteps; x++ {
+		y0 := x0[x]
+		grid[x] = make([]string, xSteps)
+		for y := 0; y < xSteps; y++ {
+			grid[x][y] = y0.BlendLuv(x1[x], float64(y)/float64(xSteps)).Hex()
+		}
+	}
+
+	return grid
 }
