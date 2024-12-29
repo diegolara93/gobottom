@@ -7,7 +7,7 @@ A graphical terminal interface for system monitoring made in Go inspired by bott
 I originally made this to try and learn more about TUI's, originally prototyping this same project in Rust with Ratatui(https://ratatui.rs/),
 I found BubbleTea to be feel more intuitive though and felt myself getting more done using it. 
 A lot of refactoring needs to be done as I just threw stuff together as I went.
-A lot of the BubbleTea helper libraries are used for styling and other utilities such as mouse tracking. 
+A lot of the BubbleTea helper libraries are used for styling and other utilities such as mouse tracking, libraries such LipGloss and BubbleZone
 
 
 
