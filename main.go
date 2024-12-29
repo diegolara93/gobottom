@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -11,50 +10,54 @@ import (
 	"github.com/NimbleMarkets/ntcharts/canvas/runes"
 	"github.com/NimbleMarkets/ntcharts/linechart/streamlinechart"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
 var docStyle = lipgloss.NewStyle().Margin(0, 0).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#98971a"))
-var docStyle2 = lipgloss.NewStyle().Margin(2, 0, 0, 0).Border(lipgloss.NormalBorder()).Width(20)
+var docStyle2 = lipgloss.NewStyle().Margin(2, 0, 0, 0).Border(lipgloss.NormalBorder()).Width(20).BorderForeground(lipgloss.Color("#ebdbb2"))
+
+var textStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7c6f64"))
 
 type tickMsg time.Time
 
 var list_item_style = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("32")).
+	Foreground(lipgloss.Color("#7c6f64")).
 	Height(1).
 	Margin(0, 0)
 
 var defaultStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("63")). // purple
-	Margin(2)
+	BorderForeground(lipgloss.Color("#ebdbb2")).
+	Margin(0)
 
 var utilHeaderStyle = lipgloss.NewStyle().
-	MarginTop(0).MarginLeft(13).
-	Background(lipgloss.Color("63"))
+	MarginTop(0).MarginLeft(0).
+	Background(lipgloss.Color("#cc241d"))
 
 var memoryStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("1")).
-	PaddingTop(2).
-	MarginTop(2).
-	PaddingBottom(2).
+	Foreground(lipgloss.Color("ebdbb2")).
+	PaddingTop(0).
+	MarginTop(0).
+	PaddingBottom(0).
 	BorderStyle(lipgloss.NormalBorder()).
 	Width(46).
 	Height(18).Align(lipgloss.Center)
 
 var graphLineStyle1 = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("4")) // blue
+	Foreground(lipgloss.Color("#cc241d")) // red
 
 var axisStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("3")) // yellow
+	Foreground(lipgloss.Color("#98971a")) // yellow
 
 var labelStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("6")) // cyan
+	Foreground(lipgloss.Color("#458588")) // cyan
 
 type item struct {
 	title, desc string
@@ -72,6 +75,8 @@ type model struct {
 	utilChart2     streamlinechart.Model
 	list_cpus      list.Model
 	selected_list  int32
+	selected_cpu   int32
+	disks          viewport.Model
 }
 
 func (m model) Init() tea.Cmd {
@@ -95,10 +100,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if zone.Get("CPU").InBounds(msg) {
 			m.selected_list = 1
 			docStyle2 = docStyle2.BorderForeground(lipgloss.Color("#98971a"))
-			docStyle = docStyle.BorderForeground(lipgloss.Color("#ffffff"))
+			docStyle = docStyle.BorderForeground(lipgloss.Color("#ebdbb2"))
 		} else if zone.Get("Other List").InBounds(msg) {
 			m.selected_list = 0
-			docStyle2 = docStyle2.BorderForeground(lipgloss.Color("#ffffff"))
+			docStyle2 = docStyle2.BorderForeground(lipgloss.Color("#ebdbb2"))
 			docStyle = docStyle.BorderForeground(lipgloss.Color("#98971a"))
 		}
 
@@ -108,20 +113,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.utilChart.Push(rand.Float64() * 100.0)
 		m.utilChart.Draw()
 
-		m.cpuUtilzations = retrieveCurrentCPUUtilization(12)
-		m.utilChart2.Push(m.cpuUtilzations)
-		m.utilChart2.Draw()
+		if m.selected_cpu != int32(m.list_cpus.Index()) {
+			m.selected_cpu = int32(m.list_cpus.Index())
+			m.utilChart2.ClearAllData()
+			m.cpuUtilzations = retrieveCurrentCPUUtilization(m.selected_cpu)
+			m.utilChart2.Push(m.cpuUtilzations)
+			m.utilChart2.Draw()
+		} else {
+			m.cpuUtilzations = retrieveCurrentCPUUtilization(m.selected_cpu)
+			m.utilChart2.Push(m.cpuUtilzations)
+			m.utilChart2.Draw()
+		}
 		// send next tick
-		return m, tea.Tick(time.Second/2, func(t time.Time) tea.Msg {
+		return m, tea.Tick(time.Second/6, func(t time.Time) tea.Msg {
 			return tickMsg(t)
 		})
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		//_, v2 := list_item_style.GetFrameSize()
-		m.list.SetSize((msg.Width-h)/2, (msg.Height-v)/2)
-		m.utilChart.Resize((msg.Width-h)/2, (msg.Height-v)/3)
-		m.utilChart2.Resize((msg.Width-h)/3, (msg.Height-v)/3)
-		m.list_cpus.SetSize((msg.Width-h)/3, (msg.Height-v)/3)
+		m.list.SetSize((msg.Width-h)/2, (msg.Height-v)/3+v)
+		m.utilChart.Resize((msg.Width-h)/3, (msg.Height-v)/3+v/2)
+		m.utilChart2.Resize((msg.Width-h)/3, (msg.Height-v)/3+v)
+		m.list_cpus.SetSize((msg.Width-h)/3, (msg.Height-v)/3+v)
+		m.disks.Height = (msg.Height-v)/3 + v
 		h3, _ := list_item_style.GetFrameSize()
 
 		list_item_style = list_item_style.Width((msg.Width - h3) / 2)
@@ -147,15 +161,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	s := docStyle.Render(m.list.View())
-	w := utilHeaderStyle.Render("Utilization")
 	t := docStyle2.Render(m.list_cpus.View())
 
-	w += lipgloss.JoinVertical(lipgloss.Bottom, defaultStyle.Render(m.utilChart.View()))
-	total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
-		"Used Memory:  " + strconv.Itoa(int(m.memory.Available)/int(math.Pow(1024, 3))) + " GB")
+	ramChartHeader := utilHeaderStyle.Render("Ram Usage: ")
 
-	temp_view := lipgloss.JoinHorizontal(lipgloss.Top, total_mem, defaultStyle.Render(m.utilChart2.View()), zone.Mark("CPU", t))
-	new_view := lipgloss.JoinHorizontal(lipgloss.Top, zone.Mark("Other List", s), w)
+	w := defaultStyle.Render("  " + ramChartHeader + "\n" + m.utilChart.View())
+	//total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
+	//	"Used Memory:  " + strconv.Itoa(int(m.memory.Available)/int(math.Pow(1024, 3))) + " GB")
+
+	temp_view := lipgloss.JoinHorizontal(lipgloss.Bottom, defaultStyle.Render(m.utilChart2.View()), zone.Mark("CPU", t))
+	d := defaultStyle.Render(m.disks.View())
+	new_view := lipgloss.JoinHorizontal(lipgloss.Top, zone.Mark("Other List", s), w, d)
 	final_view := lipgloss.JoinVertical(lipgloss.Left, new_view, temp_view)
 	return zone.Scan(final_view)
 }
@@ -173,11 +189,13 @@ func main() {
 	zone.NewGlobal()
 
 	width := 60
-	height := 26
+	height := 30
 	minYValue := 0.0
 	maxYValue := 112.0
 
-	cpuUtilizations := retrieveCurrentCPUUtilization(12)
+	cpuUtilizations := retrieveCurrentCPUUtilization(0)
+
+	disks, _ := disk.Partitions(false)
 
 	process, _ := process.Processes()
 	mem, err := mem.VirtualMemory()
@@ -207,27 +225,34 @@ func main() {
 	slc1 := streamlinechart.New(width, height)
 	slc1.AxisStyle = axisStyle
 	slc1.LabelStyle = labelStyle
-	slc1.SetYRange(minYValue, maxYValue)                // set expected Y values (values can be less or greater than what is displayed)
-	slc1.SetViewYRange(minYValue, maxYValue)            // setting display Y values will fail unless set expected Y values first
-	slc1.SetStyles(runes.ArcLineStyle, graphLineStyle1) // graphLineStyle1 replaces linechart rune style
+	slc1.SetYRange(minYValue, maxYValue)
+	slc1.SetViewYRange(minYValue, maxYValue)
+	slc1.SetStyles(runes.ArcLineStyle, graphLineStyle1)
 	slc1.Focus()
 
 	util_chart := streamlinechart.New(width, height)
 	util_chart.AxisStyle = axisStyle
 	util_chart.LabelStyle = labelStyle
-	util_chart.SetYRange(minYValue, maxYValue)                // set expected Y values (values can be less or greater than what is displayed)
-	util_chart.SetViewYRange(minYValue, maxYValue)            // setting display Y values will fail unless set expected Y values first
-	util_chart.SetStyles(runes.ArcLineStyle, graphLineStyle1) // graphLineStyle1 replaces linechart rune style
+	util_chart.SetYRange(minYValue, maxYValue)
+	util_chart.SetViewYRange(minYValue, maxYValue)
+	util_chart.SetStyles(runes.ArcLineStyle, graphLineStyle1)
 	util_chart.Focus()
+
+	vp := viewport.New(30, 30)
 
 	m := model{
 		list: list.New(items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0), utilChart: slc1,
 		memory: mem, cpuUtilzations: cpuUtilizations, utilChart2: util_chart,
 		list_cpus:     list.New(cpu_items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0),
 		selected_list: 0,
+		selected_cpu:  0,
+		disks:         vp,
 	}
 	m.list.Title = "Active Processes"
-	m.list_cpus.SetShowTitle(false)
+	m.list.Styles.Title = utilHeaderStyle
+	m.list_cpus.Title = "CPU Cores"
+	m.list_cpus.Styles.Title = utilHeaderStyle
+	m.list_cpus.SetShowTitle(true)
 	m.list_cpus.SetShowHelp(false)
 	m.list_cpus.SetShowFilter(false)
 	m.list_cpus.SetShowStatusBar(false)
@@ -235,10 +260,33 @@ func main() {
 	m.list.SetShowFilter(false)
 	m.list.SetShowStatusBar(false)
 
+	m.disks.SetContent(textStyle.Render("Memory Drives: "+strconv.Itoa(len(disks))) +
+		"\n" +
+		printDisks(disks))
+
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
+}
+
+func printDisks(disks []disk.PartitionStat) string {
+	str := ""
+	for i := range disks {
+		currDisk := disks[i].Mountpoint
+		storage, err := disk.Usage(currDisk)
+		if err != nil {
+			fmt.Println("error retrieving storage", err)
+		}
+		freeStorage := BytesToTB(storage.Total)
+		str += "Drive " + currDisk + " " + strconv.FormatFloat(freeStorage, 'f', 2, 64) + "TB\n"
+	}
+	return textStyle.Render(str)
+}
+
+func BytesToTB(bytes uint64) float64 {
+	const tb = 1024 * 1024 * 1024 * 1024 // 1 TB = 2^40 bytes
+	return float64(bytes) / float64(tb)
 }
