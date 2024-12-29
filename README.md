@@ -16,5 +16,7 @@ Due to issues with GoPsutil, specifically https://github.com/giampaolo/psutil/is
 disks will display all partitions of every disk rather than just the physical disks of your machine.
 System processes will be blank unless the terminal has administrator privileges.
 
+## How To Run:
+Download and run the .exe executable for Windows or clone the repository and run "go run main.go" in the terminal 
 
 
