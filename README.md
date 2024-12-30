@@ -19,5 +19,5 @@ System processes will be blank unless the terminal has administrator privileges.
 ## How To Run:
 Download and run the .exe executable for Windows or clone the repository and run "go run main.go" in the terminal 
 
-##F Future Additions:
+## Future Additions:
 I am hoping to add information about temperature sensors as well as info about your current network.
