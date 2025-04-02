@@ -22,8 +22,10 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 )
 
-var docStyle = lipgloss.NewStyle().Margin(0, 0).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#98971a"))
-var docStyle2 = lipgloss.NewStyle().Margin(2, 0, 0, 0).Border(lipgloss.NormalBorder()).Width(20).BorderForeground(lipgloss.Color("#ebdbb2"))
+var (
+	docStyle  = lipgloss.NewStyle().Margin(0, 0).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#98971a"))
+	docStyle2 = lipgloss.NewStyle().Margin(2, 0, 0, 0).Border(lipgloss.NormalBorder()).Width(20).BorderForeground(lipgloss.Color("#ebdbb2"))
+)
 
 var colorMargin = lipgloss.NewStyle().Margin(1)
 
@@ -91,7 +93,6 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
@@ -125,13 +126,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selected_cpu != int32(m.list_cpus.Index()) {
 			m.selected_cpu = int32(m.list_cpus.Index())
 			m.utilChart2.ClearAllData()
-			m.cpuUtilzations = retrieveCurrentCPUUtilization(m.selected_cpu)
-			m.utilChart2.Push(m.cpuUtilzations)
-			m.utilChart2.Draw()
+			go func() {
+				m.cpuUtilzations = retrieveCurrentCPUUtilization(m.selected_cpu)
+				m.utilChart2.Push(m.cpuUtilzations)
+				m.utilChart2.Draw()
+			}()
 		} else {
-			m.cpuUtilzations = retrieveCurrentCPUUtilization(m.selected_cpu)
-			m.utilChart2.Push(m.cpuUtilzations)
-			m.utilChart2.Draw()
+			go func() {
+				m.cpuUtilzations = retrieveCurrentCPUUtilization(m.selected_cpu)
+				m.utilChart2.Push(m.cpuUtilzations)
+				m.utilChart2.Draw()
+			}()
 		}
 		// send next tick
 		return m, tea.Tick(time.Second/6, func(t time.Time) tea.Msg {
@@ -180,7 +185,7 @@ func (m model) View() string {
 	cpuUtilHeader := utilHeaderStyle.Render("Core Utilization: ")
 
 	w := defaultStyle.Render("  " + ramChartHeader + "\n" + m.utilChart.View())
-	//total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
+	// total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
 	//	"Used Memory:  " + strconv.Itoa(int(m.memory.Available)/int(math.Pow(1024, 3))) + " GB")
 
 	colors := func() string {
