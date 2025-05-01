@@ -19,6 +19,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -82,6 +83,10 @@ type model struct {
 	selected_cpu   int32
 	disks          viewport.Model
 	hostInfo       viewport.Model
+	networkChart   streamlinechart.Model
+	networkStats   []net.IOCountersStat
+	prevNetStats   []net.IOCountersStat
+	lastNetTime    time.Time
 }
 
 func (m model) Init() tea.Cmd {
@@ -133,6 +138,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.utilChart2.Push(m.cpuUtilzations)
 			m.utilChart2.Draw()
 		}
+
+		now := time.Now()
+		timeDelta := now.Sub(m.lastNetTime).Seconds()
+
+		netStats, err := net.IOCounters(true)
+		if err != nil {
+			fmt.Println("error getting network stats", err)
+		}
+
+		if len(netStats) > 0 && len(m.prevNetStats) > 0 && timeDelta > 0 {
+			var totalBandwidth float64
+			for i, stat := range netStats {
+				if i < len(m.prevNetStats) {
+					sent := float64(stat.BytesSent-m.prevNetStats[i].BytesSent) / timeDelta / 1024
+					recv := float64(stat.BytesRecv-m.prevNetStats[i].BytesRecv) / timeDelta / 1024
+					totalBandwidth += sent + recv
+				}
+			}
+			m.networkChart.Push(totalBandwidth)
+			m.networkChart.Draw()
+		}
+
+		m.prevNetStats = netStats
+		m.lastNetTime = now
+
 		// send next tick
 		return m, tea.Tick(time.Second/6, func(t time.Time) tea.Msg {
 			return tickMsg(t)
@@ -148,6 +178,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.disks.Width = (msg.Width - h) / 7
 		m.hostInfo.Height = (msg.Height-v)/3 + v
 		m.hostInfo.Width = (msg.Width - h) / 4
+		m.networkChart.Resize((msg.Width-h)/3, (msg.Height-v)/3+v/2)
 		h3, _ := list_item_style.GetFrameSize()
 
 		list_item_style = list_item_style.Width((msg.Width - h3) / 2)
@@ -162,6 +193,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.utilChart2, _ = m.utilChart2.Update(msg)
 	m.utilChart2.DrawAll()
+
+	m.networkChart, _ = m.networkChart.Update(msg)
+	m.networkChart.DrawAll()
+
 	var cmd tea.Cmd
 	if m.selected_list == 0 {
 		m.list, cmd = m.list.Update(msg)
@@ -176,8 +211,8 @@ func (m model) View() string {
 	t := docStyle2.Render(m.list_cpus.View())
 
 	ramChartHeader := utilHeaderStyle.Render("Ram Usage: ")
-
 	cpuUtilHeader := utilHeaderStyle.Render("Core Utilization: ")
+	networkChartHeader := utilHeaderStyle.Render("Network Traffic (KB/s): ")
 
 	w := defaultStyle.Render("  " + ramChartHeader + "\n" + m.utilChart.View())
 	//total_mem := memoryStyle.Render("Total Memory: " + strconv.Itoa(int(m.memory.Total)/int(math.Pow(1024, 3))) + " GB\n" +
@@ -200,7 +235,13 @@ func (m model) View() string {
 
 	d := defaultStyle.Render(m.disks.View())
 	j := defaultStyle.Render(m.hostInfo.View())
-	temp_view := lipgloss.JoinHorizontal(lipgloss.Bottom, defaultStyle.Render("  "+cpuUtilHeader+"\n"+m.utilChart2.View()), zone.Mark("CPU", t), j)
+	nc := defaultStyle.Render("  " + networkChartHeader + "\n" + m.networkChart.View())
+
+	temp_view := lipgloss.JoinHorizontal(lipgloss.Bottom,
+		defaultStyle.Render("  "+cpuUtilHeader+"\n"+m.utilChart2.View()),
+		zone.Mark("CPU", t),
+		j,
+		nc)
 	new_view := lipgloss.JoinHorizontal(lipgloss.Top, w, zone.Mark("Other List", s), d, colorMargin.Render(colors))
 	final_view := lipgloss.JoinVertical(lipgloss.Left, new_view, temp_view)
 	return zone.Scan(final_view)
@@ -245,6 +286,11 @@ func main() {
 		fmt.Println("error getting host info", err)
 	}
 
+	networkStats, err := net.IOCounters(true)
+	if err != nil {
+		fmt.Println("error getting network info", err)
+	}
+
 	items := []list.Item{}
 
 	cpu_items := []list.Item{}
@@ -281,18 +327,32 @@ func main() {
 	util_chart.SetStyles(runes.ArcLineStyle, graphLineStyle1)
 	util_chart.Focus()
 
-	vp := viewport.New(30, 30)
+	network_chart := streamlinechart.New(width, height)
+	network_chart.AxisStyle = axisStyle
+	network_chart.LabelStyle = labelStyle
+	network_chart.SetYRange(0, 1000)
+	network_chart.SetViewYRange(0, 1000)
+	network_chart.SetStyles(runes.ArcLineStyle, graphLineStyle1)
+	network_chart.Focus()
 
+	vp := viewport.New(30, 30)
 	vp2 := viewport.New(30, 30)
 
 	m := model{
-		list: list.New(items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0), utilChart: slc1,
-		memory: mem, cpuUtilzations: cpuUtilizations, utilChart2: util_chart,
-		list_cpus:     list.New(cpu_items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0),
-		selected_list: 0,
-		selected_cpu:  0,
-		disks:         vp,
-		hostInfo:      vp2,
+		list:           list.New(items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0),
+		utilChart:      slc1,
+		memory:         mem,
+		cpuUtilzations: cpuUtilizations,
+		utilChart2:     util_chart,
+		list_cpus:      list.New(cpu_items, list.DefaultDelegate{Styles: list.DefaultItemStyles{NormalTitle: list_item_style}}, 0, 0),
+		selected_list:  0,
+		selected_cpu:   0,
+		disks:          vp,
+		hostInfo:       vp2,
+		networkStats:   networkStats,
+		prevNetStats:   networkStats,
+		lastNetTime:    time.Now(),
+		networkChart:   network_chart,
 	}
 	m.list.Title = "Active Processes"
 	m.list.Styles.Title = utilHeaderStyle
@@ -311,6 +371,7 @@ func main() {
 		printDisks(disks))
 
 	m.hostInfo.SetContent(textStyle.Render(printHostInfo(host)))
+
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
